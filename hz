@@ -1,0 +1,30 @@
+import os
+import requests
+from urllib.parse import urlparse
+
+def save_website_to_desktop(url, filename=None):
+    try:
+ 
+        response = requests.get(url)
+        response.encoding = 'utf-8'
+        html = response.text
+        if not filename:
+            domain = urlparse(url).netloc.replace("www.", "").replace(".", "_")
+            filename = f"{domain}.txt"
+
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        file_path = os.path.join(desktop, filename)
+
+
+        with open(file_path, "w", encoding="utf-8") as file:
+            file.write(html)
+
+        print(f"Файл сохранён: {file_path}")
+        return file_path
+
+    except Exception as e:
+        print(f" Ошибка: {e}")
+        return None
+
+
+save_website_to_desktop("https://ru.wikipedia.org/?l")
