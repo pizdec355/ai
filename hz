@@ -4,10 +4,14 @@ from urllib.parse import urlparse
 
 def save_website_to_desktop(url, filename=None):
     try:
- 
-        response = requests.get(url)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "ru-RU,ru;q=0.9"
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
-        html = response.text
+        
         if not filename:
             domain = urlparse(url).netloc.replace("www.", "").replace(".", "_")
             filename = f"{domain}.txt"
@@ -15,16 +19,15 @@ def save_website_to_desktop(url, filename=None):
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
         file_path = os.path.join(desktop, filename)
 
-
         with open(file_path, "w", encoding="utf-8") as file:
-            file.write(html)
+            file.write(response.text)
 
-        print(f"Файл сохранён: {file_path}")
+        print(f"Файл успешно сохранён: {file_path}")
         return file_path
 
     except Exception as e:
-        print(f" Ошибка: {e}")
+        print(f"Произошла ошибка: {e}")
         return None
 
 
-save_website_to_desktop("https://ru.wikipedia.org/?l")
+save_website_to_desktop("https://sever-rb.orb.ru/about/uchreditelnye-dokumenty/")
