@@ -1,33 +1,131 @@
 import os
 import requests
-from urllib.parse import urlparse
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+import time
+import random
 
-def save_website_to_desktop(url, filename=None):
+def get_session():
+    
+    session = requests.Session()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "ru-RU,ru;q=0.9",
+        "Referer": "https://www.google.com/",
+    }
+    session.headers.update(headers)
+    return session
+
+def get_menu_links(session, url, menu_class="top-menu__item-link"):
+    
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept-Language": "ru-RU,ru;q=0.9"
-        }
+        time.sleep(random.uniform(1, 2)) 
         
-        response = requests.get(url, headers=headers, timeout=10)
-        response.encoding = 'utf-8'
+        response = session.get(url, timeout=10)
+        response.raise_for_status()
         
-        if not filename:
-            domain = urlparse(url).netloc.replace("www.", "").replace(".", "_")
-            filename = f"{domain}.txt"
-
-        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-        file_path = os.path.join(desktop, filename)
-
-        with open(file_path, "w", encoding="utf-8") as file:
-            file.write(response.text)
-
-        print(f"Файл успешно сохранён: {file_path}")
-        return file_path
-
+        soup = BeautifulSoup(response.text, 'html.parser')
+        menu_links = []
+        
+        
+        for link in soup.find_all('a', class_=menu_class, href=True):
+            href = link['href']
+            absolute_url = urljoin(url, href)
+            
+            
+            if urlparse(absolute_url).netloc == urlparse(url).netloc:
+                menu_links.append({
+                    "url": absolute_url,
+                    "text": link.get_text(strip=True)
+                })
+        
+        return menu_links
+        
     except Exception as e:
-        print(f"Произошла ошибка: {e}")
+        print(f"Ошибка при парсинге меню: {e}")
+        return []
+
+def save_html_to_file(content, filename, folder="parsed_pages"):
+    """Сохраняет HTML-код в файл"""
+    try:
+      
+        os.makedirs(folder, exist_ok=True)
+        
+        
+        filepath = os.path.join(folder, filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print(f"Сохранено в: {filepath}")
+        return filepath
+    except Exception as e:
+        print(f"Ошибка при сохранении файла: {e}")
         return None
 
+def parse_page(session, url, page_num):
+    """Парсит и сохраняет содержимое страницы"""
+    try:
+        time.sleep(random.uniform(1, 3))
+        response = session.get(url, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        title = soup.title.string if soup.title else f"page_{page_num}"
+        
+      
+        domain = urlparse(url).netloc.replace("www.", "").replace(".", "_")
+        safe_title = "".join(c if c.isalnum() else "_" for c in title)
+        filename = f"{domain}_{page_num}_{safe_title[:50]}.html"
+        
+       
+        save_html_to_file(response.text, filename)
+        
+        return {
+            "url": url,
+            "title": title,
+            "filename": filename
+        }
+        
+    except Exception as e:
+        print(f"Ошибка при парсинге {url}: {e}")
+        return None
 
-save_website_to_desktop("https://sever-rb.orb.ru/about/uchreditelnye-dokumenty/")
+def main(start_url):
+    
+    session = get_session()
+    
+    print(f"Начинаем парсинг сайта: {start_url}")
+    
+    menu_items = get_menu_links(session, start_url)
+    
+    if not menu_items:
+        print("Не найдено пунктов меню. Попробуем альтернативный метод...")
+       
+        for alt_class in ["main-menu__link", "nav__link", "menu-item"]:
+            menu_items = get_menu_links(session, start_url, alt_class)
+            if menu_items:
+                break
+    
+    if not menu_items:
+        print("Не удалось найти меню. Проверьте структуру сайта.")
+        return
+    
+    print(f"\nНайдено пунктов меню: {len(menu_items)}")
+    
+    results = []
+    for i, item in enumerate(menu_items, 1):
+        print(f"\nОбрабатываем [{i}/{len(menu_items)}]: {item['text']}")
+        result = parse_page(session, item['url'], i)
+        if result:
+            results.append(result)
+        time.sleep(random.uniform(2, 4))  
+    
+   
+    print("\nРезультаты сохранения:")
+    for res in results:
+        print(f"{res['title']} -> {res['filename']}")
+
+if __name__ == "__main__":
+    target_url = "https://sever-rb.orb.ru/"
+    main(target_url)
