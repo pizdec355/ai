@@ -1,0 +1,152 @@
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+from typing import Dict, List, Set, Optional
+import time
+import re
+from collections import deque
+
+class WebsiteCrawler:
+    def __init__(self, base_url: str, max_pages: int = 100, delay: float = 1.0, timeout: int = 10):
+        self.base_url = base_url
+        self.base_domain = urlparse(base_url).netloc
+        self.max_pages = max_pages
+        self.delay = delay
+        self.timeout = timeout
+        
+        self.visited_urls: Set[str] = set()
+        self.internal_urls: Set[str] = set()
+        self.external_urls: Set[str] = set()
+        self.queue = deque()  
+        
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "ru-RU,ru;q=0.9"
+        })
+
+    def _normalize_url(self, url: str) -> str:
+        
+        parsed = urlparse(url)
+        
+        clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip('/').lower()
+        return clean_url
+
+    def _is_valid_url(self, url: str) -> bool:
+        
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return False
+        if parsed.scheme not in ('http', 'https'):
+            return False
+       
+        if any(parsed.path.lower().endswith(ext) for ext in 
+              ['.png', '.jpg', '.jpeg', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx']):
+            return False
+        return True
+
+    def _should_skip_url(self, url: str) -> bool:
+        
+        skip_patterns = {
+            '#', 'javascript:', 'mailto:', 'tel:', 'data:',
+            'login', 'signup', 'logout', 'wp-admin', 'admin',
+            'feed', 'rss', '.xml', '.json', 'api/'
+        }
+        url_lower = url.lower()
+        return any(pattern in url_lower for pattern in skip_patterns)
+
+    def _fetch_url(self, url: str) -> Optional[requests.Response]:
+      
+        try:
+            time.sleep(self.delay)
+            response = self.session.get(
+                url,
+                timeout=self.timeout,
+                allow_redirects=True
+            )
+            response.raise_for_status()
+            
+            content_type = response.headers.get('Content-Type', '').lower()
+            if 'text/html' not in content_type:
+                print(f"Пропускаем (не HTML): {url} - {content_type}")
+                return None
+                
+            return response
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Ошибка при запросе {url}: {str(e)}")
+            return None
+
+    def _process_page(self, url: str) -> None:
+        normalized_url = self._normalize_url(url)
+        
+        if normalized_url in self.visited_urls:
+            return
+            
+        print(f"Обработка: {normalized_url}")
+        self.visited_urls.add(normalized_url)
+        
+        response = self._fetch_url(normalized_url)
+        if not response:
+            return
+            
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        for link in soup.find_all('a', href=True):
+            href = link['href'].strip()
+            if not href or self._should_skip_url(href):
+                continue
+                
+            absolute_url = urljoin(normalized_url, href)
+            clean_url = self._normalize_url(absolute_url)
+            
+            if not self._is_valid_url(clean_url):
+                continue
+                
+            if urlparse(clean_url).netloc == self.base_domain:
+                if clean_url not in self.internal_urls:
+                    self.internal_urls.add(clean_url)
+                    if clean_url not in self.visited_urls:
+                        self.queue.append(clean_url)  
+            else:
+                self.external_urls.add(clean_url)
+
+    def crawl(self) -> Dict[str, List[str]]:
+       
+        self.queue.append(self.base_url)
+        
+        while self.queue and len(self.visited_urls) < self.max_pages:
+            current_url = self.queue.popleft()
+            self._process_page(current_url)
+        
+        return {
+            "internal_urls": sorted(self.internal_urls),
+            "external_urls": sorted(self.external_urls)
+        }
+
+if __name__ == "__main__":
+    target_url = "https://sever-rb.orb.ru/"
+    
+    crawler = WebsiteCrawler(
+        base_url=target_url,
+        max_pages=100,  
+        delay=0.1,      
+        timeout=1      
+    )
+    
+    print("Начало сканирования сайта:", target_url)
+    start_time = time.time()
+    result = crawler.crawl()
+    duration = time.time() - start_time
+    
+    print("\n Сканирование завершено за", round(duration, 2), "секунд")
+    print(" Всего внутренних ссылок:", len(result['internal_urls']))
+    print(" Всего внешних ссылок:", len(result['external_urls']))
+    
+    print("\n Первые 100 внутренних ссылок:")
+    for url in result['internal_urls'][:100]:
+        print(" -", url)
+    
+    print("\n Первые 100 внешних ссылок:")
+    for url in result['external_urls'][:100]:
+        print(" -", url)
