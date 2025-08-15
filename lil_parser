@@ -2,8 +2,9 @@ import requests
 from bs4 import BeautifulSoup, Comment
 import time
 import random
+import re
 
-def get_clean_html(url: str) -> str:
+def get_clean_text(url: str) -> str:
     try:
         session = requests.Session()
         session.headers.update({
@@ -20,18 +21,24 @@ def get_clean_html(url: str) -> str:
 
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        for tag in soup(['script', 'style', 'noscript', 'link', 'meta', 'svg', 'iframe']):
+
+        for tag in soup(['script', 'style', 'noscript', 'link', 'meta', 'svg', 'iframe', 'img']):
             tag.decompose()
         
         for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
             comment.extract()
         
-        for tag in soup.find_all(True):
-            for attr in list(tag.attrs):
-                if attr.lower().startswith('on') or attr.lower() in ['style', 'class']:
-                    del tag.attrs[attr]
         
-        return str(soup)
+        for tag in soup.find_all(True):
+            tag.attrs = {}
+
+       
+        text = soup.get_text(separator=' ', strip=True)
+        
+  
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
 
     except requests.exceptions.RequestException as e:
         print(f"Ошибка запроса: {e}")
@@ -41,22 +48,21 @@ def get_clean_html(url: str) -> str:
         return ""
 
 def process_url(url: str) -> str:
-    print(f"\nНачинаю обработку: {url}")
+    print(f"\nобработка: {url}")
     
-    html_content = get_clean_html(url)
+    clean_text = get_clean_text(url)
     
-    if html_content:
-        print(f"Успешно получен HTML ({len(html_content)} символов)")
-        return html_content
+    if clean_text:
+        print(f"Успешно получен текст ({len(clean_text)} символов)")
+        return clean_text
     else:
-        print("Не удалось получить HTML")
+        print("Не удалось получить текст")
         return ""
 
 if __name__ == "__main__":
-    target_url = "https://sever-rb.orb.ru/about"  
-    html_result = process_url(target_url)
+    target_url = "https://sever-rb.orb.ru"  
+    text_result = process_url(target_url)
     
-    if html_result:
-        soup = BeautifulSoup(html_result, 'html.parser')
-        print("\nАнализ страницы:")
-        print(html_result)
+    if text_result:
+        print("\nТекст страницы:")
+        print(text_result)
